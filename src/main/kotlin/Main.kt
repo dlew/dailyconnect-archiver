@@ -108,16 +108,21 @@ private fun parseImages(): List<Image> {
     .filter { it.toString().endsWith(".json") }
     .flatMap { file ->
       val root = adapter.fromJson(Files.readString(file))!!
+
       root.list
         .filter { it.Photo != null }
-        .mapIndexed { index, it -> Image(root.pdt, index, it.Txt, it.Photo!!) }
+        .flatMap { event ->
+          val numPhotos = event.photos?.size ?: 1
+          return@flatMap (0 until numPhotos).map { photoIndex ->
+            Image(root.pdt, event.Txt, event.Photo!!, photoIndex)
+          }
+        }
     }
 }
 
 private fun downloadImages(images: List<Image>) {
   images.forEach { image ->
-    val index = image.index.toString().padStart(2, '0')
-    val filename = "${image.pdt}-$index.jpg"
+    val filename = "${image.pdt}-${image.photoId}-${image.index}.jpg"
 
     val destination = IMAGE_FOLDER.resolve(filename)
     if (Files.exists(destination)) {
@@ -128,7 +133,7 @@ private fun downloadImages(images: List<Image>) {
 
     val response = OKHTTP_CLIENT.newCall(
       Request.Builder()
-        .url("https://www.dailyconnect.com/GetCmd?cmd=PhotoGet&id=${image.photoId}")
+        .url("https://www.dailyconnect.com/GetCmd?cmd=PhotoGet&id=${image.photoId}&index=${image.index}")
         .addHeader("cookie", COOKIE)
         .build()
     ).execute()
@@ -147,9 +152,11 @@ private fun Response.writeToPath(path: Path) {
 
 data class Root(val pdt: Int, val list: List<Event>)
 
-data class Event(val Txt: String, val Photo: Long? = null)
+data class Event(val Txt: String, val Photo: Long? = null, val photos: List<EventPhoto>? = null)
 
-data class Image(val pdt: Int, val index: Int, val text: String, val photoId: Long)
+data class EventPhoto(val i: Int)
+
+data class Image(val pdt: Int, val text: String, val photoId: Long, val index: Int)
 
 // Workaround for Gradle application plugin
 class Main
